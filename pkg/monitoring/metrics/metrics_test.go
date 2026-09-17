@@ -72,7 +72,7 @@ var _ = Describe("Metrics Setup", func() {
 		Expect(metrics).To(BeEmpty())
 	})
 
-	It("should register kubevirt_vmi_migration_info", func() {
+	It("should register inventory info metrics", func() {
 		err := SetupMetrics(&Stores{}, &Indexers{}, nil)
 		Expect(err).ToNot(HaveOccurred())
 
@@ -84,5 +84,15 @@ var _ = Describe("Metrics Setup", func() {
 		Expect(names).To(HaveKey("kubevirt_vmsnapshot_info"))
 		Expect(names).To(HaveKey("kubevirt_vmsnapshot_create_date_timestamp_seconds"))
 		Expect(names).To(HaveKey("kubevirt_vmrestore_info"))
+		Expect(names).To(HaveKey("kubevirt_vmexport_info"))
+		Expect(names).To(HaveKey("kubevirt_vmexport_ttl_expiration_timestamp_seconds"))
+		Expect(names).To(HaveKey("kubevirt_vmclone_info"))
+		Expect(names).To(HaveKey("kubevirt_vmclone_create_date_timestamp_seconds"))
+		Expect(names).To(HaveKey("kubevirt_vmpool_info"))
+		Expect(names).To(HaveKey("kubevirt_vmpool_desired_replicas"))
+		Expect(names).To(HaveKey("kubevirt_vmpool_replicas"))
+		Expect(names).To(HaveKey("kubevirt_vmpool_ready_replicas"))
+		Expect(names).To(HaveKey("kubevirt_vmpool_paused"))
+		Expect(names).To(HaveKey("kubevirt_vmpool_replica_failure"))
 	})
 })

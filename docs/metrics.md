@@ -14,6 +14,10 @@
 | kubevirt_vm_running_status_last_transition_timestamp_seconds | Metric | Counter | Virtual Machine last transition timestamp to running status. |
 | kubevirt_vm_starting_status_last_transition_timestamp_seconds | Metric | Counter | Virtual Machine last transition timestamp to starting status. |
 | kubevirt_vm_vnic_info | Metric | Gauge | Details of Virtual Machine vNIC interfaces. |
+| kubevirt_vmclone_create_date_timestamp_seconds | Metric | Gauge | Virtual Machine Clone creation timestamp. |
+| kubevirt_vmclone_info | Metric | Gauge | Information about VirtualMachineClones. |
+| kubevirt_vmexport_info | Metric | Gauge | Information about VirtualMachineExports. |
+| kubevirt_vmexport_ttl_expiration_timestamp_seconds | Metric | Gauge | Time at which a VirtualMachineExport will be deleted according to its TTL (status.ttlExpirationTime). |
 | kubevirt_vmi_contains_ephemeral_hotplug_volume | Metric | Gauge | Reported only for VMIs that contain an ephemeral hotplug volume. |
 | kubevirt_vmi_info | Metric | Gauge | Information about VirtualMachineInstances. |
 | kubevirt_vmi_launcher_memory_overhead_bytes | Metric | Gauge | Estimation of the memory amount required for virt-launcher's infrastructure components. |
@@ -29,6 +33,12 @@
 | kubevirt_vmi_non_evictable | Metric | Gauge | Indication for a VirtualMachine that its eviction strategy is set to Live Migration but is not migratable. |
 | kubevirt_vmi_status_addresses | Metric | Gauge | The addresses of a VirtualMachineInstance. |
 | kubevirt_vmi_vnic_info | Metric | Gauge | Details of VirtualMachineInstance vNIC interfaces. |
+| kubevirt_vmpool_desired_replicas | Metric | Gauge | Desired number of VirtualMachine replicas in a VirtualMachinePool (spec.replicas, default 1). |
+| kubevirt_vmpool_info | Metric | Gauge | Information about VirtualMachinePools. |
+| kubevirt_vmpool_paused | Metric | Gauge | Whether a VirtualMachinePool is paused (spec.paused). 1 if paused, 0 otherwise. |
+| kubevirt_vmpool_ready_replicas | Metric | Gauge | Number of ready VirtualMachine replicas in a VirtualMachinePool (status.readyReplicas). |
+| kubevirt_vmpool_replica_failure | Metric | Gauge | Whether a VirtualMachinePool has a ReplicaFailure condition set to True. 1 if failing, 0 otherwise. |
+| kubevirt_vmpool_replicas | Metric | Gauge | Current number of VirtualMachine replicas in a VirtualMachinePool (status.replicas). |
 | kubevirt_vmrestore_info | Metric | Gauge | Information about VirtualMachineRestores. |
 | kubevirt_vmsnapshot_create_date_timestamp_seconds | Metric | Gauge | Virtual Machine Snapshot creation timestamp. |
 | kubevirt_vmsnapshot_info | Metric | Gauge | Information about VirtualMachineSnapshots. |

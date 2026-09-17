@@ -19,10 +19,15 @@ Copyright The KubeVirt Authors.
 package metrics
 
 import (
+	"strings"
+
 	"github.com/rhobs/operator-observability-toolkit/pkg/operatormetrics"
+	k8sv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 )
+
+const inventoryPhaseUnset = "unset"
 
 func listStoreObjects[T any](store cache.Store) []*T {
 	if store == nil {
@@ -40,6 +45,41 @@ func listStoreObjects[T any](store cache.Store) []*T {
 	return items
 }
 
+func resourcePhaseLabel(phase string) string {
+	if phase == "" {
+		return inventoryPhaseUnset
+	}
+	return strings.ToLower(phase)
+}
+
+func typedLocalObjectName(ref *k8sv1.TypedLocalObjectReference) string {
+	if ref == nil {
+		return None
+	}
+	return ref.Name
+}
+
+func typedLocalObjectKind(ref *k8sv1.TypedLocalObjectReference) string {
+	if ref == nil {
+		return None
+	}
+	return ref.Kind
+}
+
+func optionalStringLabel(value *string) string {
+	if value == nil || *value == "" {
+		return None
+	}
+	return *value
+}
+
+func boolGaugeValue(enabled bool) float64 {
+	if enabled {
+		return 1
+	}
+	return 0
+}
+
 func collectUnixTimestamp(
 	metric operatormetrics.Metric,
 	timestamp metav1.Time,
@@ -53,4 +93,15 @@ func collectUnixTimestamp(
 		Value:  float64(timestamp.Unix()),
 		Labels: labels,
 	}}
+}
+
+func collectOptionalUnixTimestamp(
+	metric operatormetrics.Metric,
+	timestamp *metav1.Time,
+	labels []string,
+) []operatormetrics.CollectorResult {
+	if timestamp == nil {
+		return nil
+	}
+	return collectUnixTimestamp(metric, *timestamp, labels)
 }
