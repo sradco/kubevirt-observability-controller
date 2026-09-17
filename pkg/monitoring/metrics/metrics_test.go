@@ -81,5 +81,7 @@ var _ = Describe("Metrics Setup", func() {
 			names[m.GetOpts().Name] = true
 		}
 		Expect(names).To(HaveKey("kubevirt_vmi_migration_info"))
+		Expect(names).To(HaveKey("kubevirt_vmsnapshot_info"))
+		Expect(names).To(HaveKey("kubevirt_vmsnapshot_create_date_timestamp_seconds"))
 	})
 })

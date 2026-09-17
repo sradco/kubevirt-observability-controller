@@ -7,7 +7,7 @@ KubeVirt deployment.
 ## Overview
 
 The controller watches KubeVirt resources (VirtualMachine,
-VirtualMachineInstance, migrations, instance types) and exposes Prometheus
+VirtualMachineInstance, migrations, snapshots, instance types) and exposes Prometheus
 metrics about them. It also reconciles Prometheus Operator resources
 (PrometheusRule, ServiceMonitor) so Prometheus can scrape those metrics and
 evaluate alerting/recording rules.

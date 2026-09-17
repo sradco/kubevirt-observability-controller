@@ -27,6 +27,7 @@ import (
 	toolscache "k8s.io/client-go/tools/cache"
 	k6tv1 "kubevirt.io/api/core/v1"
 	instancetypev1beta1 "kubevirt.io/api/instancetype/v1beta1"
+	snapshotv1 "kubevirt.io/api/snapshot/v1beta1"
 	ctrlcache "sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -111,6 +112,11 @@ func SetupInformers(ctx context.Context, c ctrlcache.Cache) error {
 		return fmt.Errorf("pod: %w", err)
 	}
 
+	vmSnapshot, err := informerFor(ctx, c, &snapshotv1.VirtualMachineSnapshot{})
+	if err != nil {
+		return fmt.Errorf("VMSnapshot: %w", err)
+	}
+
 	SetStores(
 		&Stores{
 			VM:                  vm.GetStore(),
@@ -122,6 +128,7 @@ func SetupInformers(ctx context.Context, c ctrlcache.Cache) error {
 			ClusterPreference:   clusterPreference.GetStore(),
 			ControllerRevision:  controllerRevision.GetStore(),
 			VirtHandlerPod:      pod.GetStore(),
+			VMSnapshot:          vmSnapshot.GetStore(),
 		},
 		&Indexers{
 			VMIMigration: vmim.GetIndexer(),
