@@ -55,7 +55,7 @@ rules:
   resources: ["pods", "persistentvolumeclaims"]
   verbs: ["get", "list", "watch"]
 - apiGroups: ["snapshot.kubevirt.io"]
-  resources: ["virtualmachinesnapshots"]
+  resources: ["virtualmachinesnapshots", "virtualmachinerestores"]
   verbs: ["get", "list", "watch"]
 - apiGroups: ["apps"]
   resources: ["controllerrevisions"]

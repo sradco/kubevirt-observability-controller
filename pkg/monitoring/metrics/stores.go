@@ -31,6 +31,7 @@ type Stores struct {
 	ControllerRevision  cache.Store
 	VirtHandlerPod      cache.Store
 	VMSnapshot          cache.Store
+	VMRestore           cache.Store
 }
 
 type Indexers struct {

@@ -117,6 +117,11 @@ func SetupInformers(ctx context.Context, c ctrlcache.Cache) error {
 		return fmt.Errorf("VMSnapshot: %w", err)
 	}
 
+	vmRestore, err := informerFor(ctx, c, &snapshotv1.VirtualMachineRestore{})
+	if err != nil {
+		return fmt.Errorf("VMRestore: %w", err)
+	}
+
 	SetStores(
 		&Stores{
 			VM:                  vm.GetStore(),
@@ -129,6 +134,7 @@ func SetupInformers(ctx context.Context, c ctrlcache.Cache) error {
 			ControllerRevision:  controllerRevision.GetStore(),
 			VirtHandlerPod:      pod.GetStore(),
 			VMSnapshot:          vmSnapshot.GetStore(),
+			VMRestore:           vmRestore.GetStore(),
 		},
 		&Indexers{
 			VMIMigration: vmim.GetIndexer(),

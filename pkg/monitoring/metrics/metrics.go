@@ -54,6 +54,7 @@ func SetupMetrics(metricsStores *Stores, metricsIndexers *Indexers, allowlist ma
 		VMIStatsCollector,
 		VMStatsCollector,
 		VMSnapshotStatsCollector,
+		VMRestoreStatsCollector,
 	}
 
 	if allowlist == nil {

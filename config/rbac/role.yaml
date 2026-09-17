@@ -10,7 +10,7 @@ rules:
   resources: ["virtualmachines", "virtualmachineinstances", "virtualmachineinstancemigrations", "kubevirts"]
   verbs: ["get", "list", "watch"]
 - apiGroups: ["snapshot.kubevirt.io"]
-  resources: ["virtualmachinesnapshots"]
+  resources: ["virtualmachinesnapshots", "virtualmachinerestores"]
   verbs: ["get", "list", "watch"]
 - apiGroups: ["instancetype.kubevirt.io"]
   resources: ["virtualmachineinstancetypes", "virtualmachineclusterinstancetypes", "virtualmachinepreferences", "virtualmachineclusterpreferences"]
