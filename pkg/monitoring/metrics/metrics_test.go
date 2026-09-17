@@ -71,4 +71,15 @@ var _ = Describe("Metrics Setup", func() {
 		metrics := ListMetrics()
 		Expect(metrics).To(BeEmpty())
 	})
+
+	It("should register kubevirt_vmi_migration_info", func() {
+		err := SetupMetrics(&Stores{}, &Indexers{}, nil)
+		Expect(err).ToNot(HaveOccurred())
+
+		names := map[string]bool{}
+		for _, m := range ListMetrics() {
+			names[m.GetOpts().Name] = true
+		}
+		Expect(names).To(HaveKey("kubevirt_vmi_migration_info"))
+	})
 })

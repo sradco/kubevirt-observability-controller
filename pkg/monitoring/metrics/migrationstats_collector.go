@@ -19,8 +19,31 @@ Copyright The KubeVirt Authors.
 package metrics
 
 import (
+	"strings"
+
 	"github.com/rhobs/operator-observability-toolkit/pkg/operatormetrics"
+	k8sv1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	k6tv1 "kubevirt.io/api/core/v1"
+)
+
+const (
+	migrationTriggerUser           = "user"
+	migrationTriggerEvacuation     = "evacuation"
+	migrationTriggerWorkloadUpdate = "workload_update"
+
+	migrationResultSucceeded  = "succeeded"
+	migrationResultFailed     = "failed"
+	migrationResultInProgress = "in_progress"
+
+	migrationReasonNone          = "none"
+	migrationReasonTimeout       = "timeout"
+	migrationReasonCanceled      = "canceled"
+	migrationReasonUnschedulable = "unschedulable"
+	migrationReasonFailed        = "failed"
+
+	migrationPhaseUnset = "unset"
 )
 
 var (
@@ -32,6 +55,7 @@ var (
 			RunningMigrations,
 			SucceededMigration,
 			FailedMigration,
+			MigrationInfo,
 		},
 		CollectCallback: migrationStatsCollectorCallback,
 	}
@@ -79,6 +103,19 @@ var (
 		},
 		[]string{"vmi", "vmim", "namespace"},
 	)
+
+	MigrationInfo = operatormetrics.NewGaugeVec(
+		operatormetrics.MetricOpts{
+			Name: "kubevirt_vmi_migration_info",
+			Help: "Information about VirtualMachineInstanceMigrations.",
+		},
+		[]string{
+			"namespace", "name", "migration_name", "uid",
+			"source_node", "target_node",
+			"phase", "trigger", "result", "reason",
+			"mode", "priority", "migration_policy", "network_type",
+		},
+	)
 )
 
 func migrationStatsCollectorCallback() []operatormetrics.CollectorResult {
@@ -88,9 +125,13 @@ func migrationStatsCollectorCallback() []operatormetrics.CollectorResult {
 	}
 
 	cachedObjs := idx.VMIMigration.List()
-	vmims := make([]*k6tv1.VirtualMachineInstanceMigration, len(cachedObjs))
-	for i, obj := range cachedObjs {
-		vmims[i] = obj.(*k6tv1.VirtualMachineInstanceMigration)
+	vmims := make([]*k6tv1.VirtualMachineInstanceMigration, 0, len(cachedObjs))
+	for _, obj := range cachedObjs {
+		vmim, ok := obj.(*k6tv1.VirtualMachineInstanceMigration)
+		if !ok {
+			continue
+		}
+		vmims = append(vmims, vmim)
 	}
 
 	return ReportMigrationStats(vmims)
@@ -107,6 +148,8 @@ func ReportMigrationStats(
 	runningCount := 0
 
 	for _, vmim := range vmims {
+		cr = append(cr, collectMigrationInfo(vmim))
+
 		switch vmim.Status.Phase {
 		case k6tv1.MigrationPending:
 			pendingCount++
@@ -115,7 +158,8 @@ func ReportMigrationStats(
 		case k6tv1.MigrationPhaseUnset:
 			unsetCount++
 		case k6tv1.MigrationRunning, k6tv1.MigrationScheduled,
-			k6tv1.MigrationPreparingTarget, k6tv1.MigrationTargetReady:
+			k6tv1.MigrationPreparingTarget, k6tv1.MigrationTargetReady,
+			k6tv1.MigrationWaitingForSync, k6tv1.MigrationSynchronizing:
 			runningCount++
 		case k6tv1.MigrationSucceeded:
 			cr = append(cr, operatormetrics.CollectorResult{
@@ -144,4 +188,163 @@ func ReportMigrationStats(
 			Metric: RunningMigrations, Value: float64(runningCount),
 		},
 	)
+}
+
+func collectMigrationInfo(vmim *k6tv1.VirtualMachineInstanceMigration) operatormetrics.CollectorResult {
+	state := vmim.Status.MigrationState
+	sourceNode := None
+	targetNode := None
+	if state != nil {
+		sourceNode = state.SourceNode
+		targetNode = state.TargetNode
+	}
+
+	result := getMigrationResult(vmim.Status.Phase)
+
+	return operatormetrics.CollectorResult{
+		Metric: MigrationInfo,
+		Value:  1,
+		Labels: []string{
+			vmim.Namespace,
+			vmim.Spec.VMIName,
+			vmim.Name,
+			string(vmim.UID),
+			sourceNode,
+			targetNode,
+			getMigrationPhaseLabel(vmim.Status.Phase),
+			getMigrationTrigger(vmim),
+			result,
+			getMigrationReason(vmim, result),
+			getMigrationMode(state),
+			getMigrationPriority(vmim.Spec.Priority),
+			getMigrationPolicyName(state),
+			getMigrationNetworkType(state),
+		},
+	}
+}
+
+func getMigrationPhaseLabel(phase k6tv1.VirtualMachineInstanceMigrationPhase) string {
+	if phase == k6tv1.MigrationPhaseUnset {
+		return migrationPhaseUnset
+	}
+	return strings.ToLower(string(phase))
+}
+
+func getMigrationResult(phase k6tv1.VirtualMachineInstanceMigrationPhase) string {
+	switch phase {
+	case k6tv1.MigrationSucceeded:
+		return migrationResultSucceeded
+	case k6tv1.MigrationFailed:
+		return migrationResultFailed
+	case k6tv1.MigrationPhaseUnset,
+		k6tv1.MigrationPending,
+		k6tv1.MigrationScheduling,
+		k6tv1.MigrationScheduled,
+		k6tv1.MigrationPreparingTarget,
+		k6tv1.MigrationTargetReady,
+		k6tv1.MigrationRunning,
+		k6tv1.MigrationWaitingForSync,
+		k6tv1.MigrationSynchronizing:
+		return migrationResultInProgress
+	default:
+		return migrationResultInProgress
+	}
+}
+
+func getMigrationTrigger(vmim *k6tv1.VirtualMachineInstanceMigration) string {
+	if metav1.HasAnnotation(vmim.ObjectMeta, k6tv1.EvacuationMigrationAnnotation) {
+		return migrationTriggerEvacuation
+	}
+	if metav1.HasAnnotation(vmim.ObjectMeta, k6tv1.WorkloadUpdateMigrationAnnotation) {
+		return migrationTriggerWorkloadUpdate
+	}
+	return migrationTriggerUser
+}
+
+func getMigrationReason(vmim *k6tv1.VirtualMachineInstanceMigration, result string) string {
+	if result != migrationResultFailed {
+		return migrationReasonNone
+	}
+	if migrationWasCanceled(vmim) {
+		return migrationReasonCanceled
+	}
+	if migrationWasUnschedulable(vmim) {
+		return migrationReasonUnschedulable
+	}
+	if migrationTimedOut(vmim) {
+		return migrationReasonTimeout
+	}
+	return migrationReasonFailed
+}
+
+func getMigrationMode(state *k6tv1.VirtualMachineInstanceMigrationState) string {
+	if state == nil || state.Mode == "" {
+		return None
+	}
+	return strings.ToLower(string(state.Mode))
+}
+
+func getMigrationPriority(priority *k6tv1.MigrationPriority) string {
+	if priority == nil || *priority == "" {
+		return None
+	}
+	return string(*priority)
+}
+
+func getMigrationPolicyName(state *k6tv1.VirtualMachineInstanceMigrationState) string {
+	if state == nil || state.MigrationPolicyName == nil || *state.MigrationPolicyName == "" {
+		return None
+	}
+	return *state.MigrationPolicyName
+}
+
+func getMigrationNetworkType(state *k6tv1.VirtualMachineInstanceMigrationState) string {
+	if state == nil || state.MigrationNetworkType == "" {
+		return None
+	}
+	return strings.ToLower(string(state.MigrationNetworkType))
+}
+
+func migrationWasCanceled(vmim *k6tv1.VirtualMachineInstanceMigration) bool {
+	if migrationHasCondition(vmim, k6tv1.VirtualMachineInstanceMigrationAbortRequested) {
+		return true
+	}
+	if state := vmim.Status.MigrationState; state != nil {
+		if state.AbortRequested ||
+			state.AbortStatus == k6tv1.MigrationAbortSucceeded ||
+			state.AbortStatus == k6tv1.MigrationAbortInProgress {
+			return true
+		}
+	}
+	return strings.Contains(migrationFailureReason(vmim), "abort")
+}
+
+func migrationWasUnschedulable(vmim *k6tv1.VirtualMachineInstanceMigration) bool {
+	if migrationHasCondition(vmim, k6tv1.VirtualMachineInstanceMigrationRejectedByResourceQuota) {
+		return true
+	}
+	return strings.Contains(migrationFailureReason(vmim), "unschedulable")
+}
+
+func migrationTimedOut(vmim *k6tv1.VirtualMachineInstanceMigration) bool {
+	return strings.Contains(migrationFailureReason(vmim), "timeout")
+}
+
+func migrationFailureReason(vmim *k6tv1.VirtualMachineInstanceMigration) string {
+	if vmim.Status.MigrationState == nil {
+		return ""
+	}
+	return strings.ToLower(vmim.Status.MigrationState.FailureReason)
+}
+
+func migrationHasCondition(
+	vmim *k6tv1.VirtualMachineInstanceMigration,
+	condType k6tv1.VirtualMachineInstanceMigrationConditionType,
+) bool {
+	for _, condition := range vmim.Status.Conditions {
+		if condition.Type == condType && condition.Status == k8sv1.ConditionTrue {
+			return true
+		}
+	}
+	return false
 }

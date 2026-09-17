@@ -23,7 +23,10 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/rhobs/operator-observability-toolkit/pkg/operatormetrics"
+	k8sv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	k6tv1 "kubevirt.io/api/core/v1"
 )
 
@@ -112,4 +115,283 @@ var _ = Describe("Migration Stats Collector", func() {
 		results := ReportMigrationStats(nil)
 		Expect(results).To(HaveLen(4))
 	})
+
+	Context("kubevirt_vmi_migration_info", func() {
+		It("should emit one series per VMIM with user trigger for an in-progress migration", func() {
+			vmim := &k6tv1.VirtualMachineInstanceMigration{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-vmim",
+					Namespace: "test-ns",
+					UID:       types.UID("test-vmim-uid"),
+				},
+				Spec: k6tv1.VirtualMachineInstanceMigrationSpec{
+					VMIName: "test-vmi",
+				},
+				Status: k6tv1.VirtualMachineInstanceMigrationStatus{
+					Phase: k6tv1.MigrationRunning,
+				},
+			}
+
+			results := migrationInfoResults(ReportMigrationStats([]*k6tv1.VirtualMachineInstanceMigration{vmim}))
+			Expect(results).To(HaveLen(1))
+			Expect(results[0].Value).To(Equal(1.0))
+			Expect(results[0].Labels).To(Equal([]string{
+				"test-ns", "test-vmi", "test-vmim", "test-vmim-uid",
+				"", "",
+				"running", migrationTriggerUser, migrationResultInProgress, migrationReasonNone,
+				"", "", "", "",
+			}))
+		})
+
+		DescribeTable("should map trigger from VMIM annotations", func(annotations map[string]string, trigger string) {
+			vmim := &k6tv1.VirtualMachineInstanceMigration{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "test-vmim",
+					Namespace:   "test-ns",
+					Annotations: annotations,
+				},
+				Spec: k6tv1.VirtualMachineInstanceMigrationSpec{
+					VMIName: "test-vmi",
+				},
+				Status: k6tv1.VirtualMachineInstanceMigrationStatus{
+					Phase: k6tv1.MigrationPending,
+				},
+			}
+
+			results := migrationInfoResults(ReportMigrationStats([]*k6tv1.VirtualMachineInstanceMigration{vmim}))
+			Expect(results).To(HaveLen(1))
+			Expect(results[0].Labels[7]).To(Equal(trigger))
+		},
+			Entry("user", nil, migrationTriggerUser),
+			Entry("evacuation", map[string]string{k6tv1.EvacuationMigrationAnnotation: "node-1"}, migrationTriggerEvacuation),
+			Entry("workload update",
+				map[string]string{k6tv1.WorkloadUpdateMigrationAnnotation: ""},
+				migrationTriggerWorkloadUpdate),
+		)
+
+		It("should prefer evacuation over workload update when both annotations are set", func() {
+			vmim := &k6tv1.VirtualMachineInstanceMigration{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-vmim",
+					Namespace: "test-ns",
+					Annotations: map[string]string{
+						k6tv1.EvacuationMigrationAnnotation:     "node-1",
+						k6tv1.WorkloadUpdateMigrationAnnotation: "",
+					},
+				},
+				Spec: k6tv1.VirtualMachineInstanceMigrationSpec{
+					VMIName: "test-vmi",
+				},
+				Status: k6tv1.VirtualMachineInstanceMigrationStatus{
+					Phase: k6tv1.MigrationPending,
+				},
+			}
+
+			results := migrationInfoResults(ReportMigrationStats([]*k6tv1.VirtualMachineInstanceMigration{vmim}))
+			Expect(results[0].Labels[7]).To(Equal(migrationTriggerEvacuation))
+		})
+
+		It("should include source and target nodes and succeeded result", func() {
+			vmim := &k6tv1.VirtualMachineInstanceMigration{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-vmim",
+					Namespace: "test-ns",
+					UID:       types.UID("test-vmim-uid"),
+				},
+				Spec: k6tv1.VirtualMachineInstanceMigrationSpec{
+					VMIName: "test-vmi",
+				},
+				Status: k6tv1.VirtualMachineInstanceMigrationStatus{
+					Phase: k6tv1.MigrationSucceeded,
+					MigrationState: &k6tv1.VirtualMachineInstanceMigrationState{
+						SourceNode: "node-a",
+						TargetNode: "node-b",
+					},
+				},
+			}
+
+			results := migrationInfoResults(ReportMigrationStats([]*k6tv1.VirtualMachineInstanceMigration{vmim}))
+			Expect(results).To(HaveLen(1))
+			Expect(results[0].Labels).To(Equal([]string{
+				"test-ns", "test-vmi", "test-vmim", "test-vmim-uid",
+				"node-a", "node-b",
+				"succeeded", migrationTriggerUser, migrationResultSucceeded, migrationReasonNone,
+				"", "", "", "",
+			}))
+		})
+
+		DescribeTable("should map failed reason from status",
+			func(vmim *k6tv1.VirtualMachineInstanceMigration, reason string) {
+				results := migrationInfoResults(ReportMigrationStats([]*k6tv1.VirtualMachineInstanceMigration{vmim}))
+				Expect(results).To(HaveLen(1))
+				Expect(results[0].Labels[6]).To(Equal("failed"))
+				Expect(results[0].Labels[8]).To(Equal(migrationResultFailed))
+				Expect(results[0].Labels[9]).To(Equal(reason))
+			},
+			Entry("generic failure",
+				failedMigrationInfoVMIM(&k6tv1.VirtualMachineInstanceMigrationState{
+					FailureReason: "live migration failed",
+				}, nil),
+				migrationReasonFailed,
+			),
+			Entry("timeout",
+				failedMigrationInfoVMIM(&k6tv1.VirtualMachineInstanceMigrationState{
+					FailureReason: "pending pod default/virt-launcher-x timeout period exceeded",
+				}, nil),
+				migrationReasonTimeout,
+			),
+			Entry("unschedulable timeout prefers unschedulable",
+				failedMigrationInfoVMIM(&k6tv1.VirtualMachineInstanceMigrationState{
+					FailureReason: "unschedulable pod default/virt-launcher-x timeout period exceeded",
+				}, nil),
+				migrationReasonUnschedulable,
+			),
+			Entry("resource quota",
+				failedMigrationInfoVMIM(nil, []k6tv1.VirtualMachineInstanceMigrationCondition{
+					{
+						Type:   k6tv1.VirtualMachineInstanceMigrationRejectedByResourceQuota,
+						Status: k8sv1.ConditionTrue,
+					},
+				}),
+				migrationReasonUnschedulable,
+			),
+			Entry("abort requested condition",
+				failedMigrationInfoVMIM(nil, []k6tv1.VirtualMachineInstanceMigrationCondition{
+					{
+						Type:   k6tv1.VirtualMachineInstanceMigrationAbortRequested,
+						Status: k8sv1.ConditionTrue,
+					},
+				}),
+				migrationReasonCanceled,
+			),
+			Entry("abort status",
+				failedMigrationInfoVMIM(&k6tv1.VirtualMachineInstanceMigrationState{
+					AbortStatus:   k6tv1.MigrationAbortSucceeded,
+					FailureReason: "live migration has been aborted",
+				}, nil),
+				migrationReasonCanceled,
+			),
+		)
+
+		It("should not classify in-progress abort as a failed reason", func() {
+			vmim := &k6tv1.VirtualMachineInstanceMigration{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-vmim",
+					Namespace: "test-ns",
+				},
+				Spec: k6tv1.VirtualMachineInstanceMigrationSpec{
+					VMIName: "test-vmi",
+				},
+				Status: k6tv1.VirtualMachineInstanceMigrationStatus{
+					Phase: k6tv1.MigrationRunning,
+					Conditions: []k6tv1.VirtualMachineInstanceMigrationCondition{
+						{
+							Type:   k6tv1.VirtualMachineInstanceMigrationAbortRequested,
+							Status: k8sv1.ConditionTrue,
+						},
+					},
+				},
+			}
+
+			results := migrationInfoResults(ReportMigrationStats([]*k6tv1.VirtualMachineInstanceMigration{vmim}))
+			Expect(results[0].Labels[8]).To(Equal(migrationResultInProgress))
+			Expect(results[0].Labels[9]).To(Equal(migrationReasonNone))
+		})
+
+		It("should distinguish VMIMs that reuse a name by uid", func() {
+			first := failedMigrationInfoVMIM(nil, nil)
+			first.UID = "uid-1"
+			second := failedMigrationInfoVMIM(nil, nil)
+			second.UID = "uid-2"
+
+			results := migrationInfoResults(ReportMigrationStats([]*k6tv1.VirtualMachineInstanceMigration{first, second}))
+			Expect(results).To(HaveLen(2))
+			Expect(results[0].Labels[3]).To(Equal("uid-1"))
+			Expect(results[1].Labels[3]).To(Equal("uid-2"))
+		})
+
+		DescribeTable("should map mode, priority, policy, and network type",
+			func(mutate func(*k6tv1.VirtualMachineInstanceMigration), mode, priority, policy, networkType string) {
+				vmim := &k6tv1.VirtualMachineInstanceMigration{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-vmim",
+						Namespace: "test-ns",
+						UID:       types.UID("test-vmim-uid"),
+					},
+					Spec: k6tv1.VirtualMachineInstanceMigrationSpec{
+						VMIName: "test-vmi",
+					},
+					Status: k6tv1.VirtualMachineInstanceMigrationStatus{
+						Phase: k6tv1.MigrationRunning,
+					},
+				}
+				mutate(vmim)
+
+				results := migrationInfoResults(ReportMigrationStats([]*k6tv1.VirtualMachineInstanceMigration{vmim}))
+				Expect(results).To(HaveLen(1))
+				Expect(results[0].Labels[10]).To(Equal(mode))
+				Expect(results[0].Labels[11]).To(Equal(priority))
+				Expect(results[0].Labels[12]).To(Equal(policy))
+				Expect(results[0].Labels[13]).To(Equal(networkType))
+			},
+			Entry("unset", func(*k6tv1.VirtualMachineInstanceMigration) {}, "", "", "", ""),
+			Entry("precopy over pod", func(vmim *k6tv1.VirtualMachineInstanceMigration) {
+				vmim.Spec.Priority = ptr.To(k6tv1.PriorityUserTriggered)
+				vmim.Status.MigrationState = &k6tv1.VirtualMachineInstanceMigrationState{
+					Mode:                 k6tv1.MigrationPreCopy,
+					MigrationPolicyName:  ptr.To("policy-a"),
+					MigrationNetworkType: k6tv1.Pod,
+				}
+			}, "precopy", "user-triggered", "policy-a", "pod"),
+			Entry("postcopy over migration network", func(vmim *k6tv1.VirtualMachineInstanceMigration) {
+				vmim.Spec.Priority = ptr.To(k6tv1.PrioritySystemCritical)
+				vmim.Status.MigrationState = &k6tv1.VirtualMachineInstanceMigrationState{
+					Mode:                 k6tv1.MigrationPostCopy,
+					MigrationNetworkType: k6tv1.Migration,
+				}
+			}, "postcopy", "system-critical", "", "migration"),
+			Entry("paused system-maintenance", func(vmim *k6tv1.VirtualMachineInstanceMigration) {
+				vmim.Spec.Priority = ptr.To(k6tv1.PrioritySystemMaintenance)
+				vmim.Status.MigrationState = &k6tv1.VirtualMachineInstanceMigrationState{
+					Mode: k6tv1.MigrationPaused,
+				}
+			}, "paused", "system-maintenance", "", ""),
+			Entry("empty policy name", func(vmim *k6tv1.VirtualMachineInstanceMigration) {
+				vmim.Status.MigrationState = &k6tv1.VirtualMachineInstanceMigrationState{
+					MigrationPolicyName: ptr.To(""),
+				}
+			}, "", "", "", ""),
+		)
+	})
 })
+
+func migrationInfoResults(cr []operatormetrics.CollectorResult) []operatormetrics.CollectorResult {
+	var results []operatormetrics.CollectorResult
+	for _, result := range cr {
+		if result.Metric.GetOpts().Name == MigrationInfo.GetOpts().Name {
+			results = append(results, result)
+		}
+	}
+	return results
+}
+
+func failedMigrationInfoVMIM(
+	state *k6tv1.VirtualMachineInstanceMigrationState,
+	conditions []k6tv1.VirtualMachineInstanceMigrationCondition,
+) *k6tv1.VirtualMachineInstanceMigration {
+	return &k6tv1.VirtualMachineInstanceMigration{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-vmim",
+			Namespace: "test-ns",
+			UID:       types.UID("test-vmim-uid"),
+		},
+		Spec: k6tv1.VirtualMachineInstanceMigrationSpec{
+			VMIName: "test-vmi",
+		},
+		Status: k6tv1.VirtualMachineInstanceMigrationStatus{
+			Phase:          k6tv1.MigrationFailed,
+			MigrationState: state,
+			Conditions:     conditions,
+		},
+	}
+}

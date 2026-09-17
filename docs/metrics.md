@@ -19,6 +19,7 @@
 | kubevirt_vmi_launcher_memory_overhead_bytes | Metric | Gauge | Estimation of the memory amount required for virt-launcher's infrastructure components. |
 | kubevirt_vmi_migration_end_time_seconds | Metric | Gauge | The time at which the migration ended. |
 | kubevirt_vmi_migration_failed | Metric | Gauge | Indicates if the VMI migration failed. |
+| kubevirt_vmi_migration_info | Metric | Gauge | Information about VirtualMachineInstanceMigrations. |
 | kubevirt_vmi_migration_start_time_seconds | Metric | Gauge | The time at which the migration started. |
 | kubevirt_vmi_migration_succeeded | Metric | Gauge | Indicates if the VMI migration succeeded. |
 | kubevirt_vmi_migrations_in_pending_phase | Metric | Gauge | Number of current pending migrations. |
