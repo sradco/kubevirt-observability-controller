@@ -3,11 +3,13 @@ module github.com/kubevirt/kubevirt-observability-controller
 go 1.26.0
 
 require (
+	github.com/go-logr/logr v1.4.4
 	github.com/onsi/ginkgo/v2 v2.32.0
 	github.com/onsi/gomega v1.42.1
 	github.com/openshift/api v0.0.0-20260901194050-81278704edb0
 	github.com/openshift/library-go v0.0.0-20260902200604-6de66ffc2023
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.93.0
+	github.com/prometheus/client_model v0.6.2
 	github.com/rhobs/operator-observability-toolkit v0.0.30
 	k8s.io/api v0.36.3
 	k8s.io/apimachinery v0.36.3
@@ -31,7 +33,6 @@ require (
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.2 // indirect
-	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-logr/zapr v1.3.0 // indirect
 	github.com/go-openapi/jsonpointer v1.0.0 // indirect
@@ -54,6 +55,7 @@ require (
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/pprof v0.0.0-20260802141513-ef3492d7dac3 // indirect
 	github.com/google/uuid v1.6.0 // indirect
+	github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
@@ -63,7 +65,6 @@ require (
 	github.com/openshift/custom-resource-status v1.1.2 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_golang v1.24.1 // indirect
-	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.70.1 // indirect
 	github.com/prometheus/procfs v0.21.1 // indirect
 	github.com/spf13/cobra v1.10.2 // indirect

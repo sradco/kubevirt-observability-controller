@@ -1,0 +1,117 @@
+---
+# Controller-specific promtool tests. Do not copy kubevirt/kubevirt's
+# hack/prom-rule-ci/prom-rules-tests.yaml: alert names, summaries, and
+# expressions differ. Add cases here as alerts are moved or changed.
+rule_files:
+  - /tmp/rules.verify
+
+group_eval_order:
+  - recordingRules.rules
+  - alerts.rules
+
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'up{namespace="ci", pod="virt-api-1"}'
+        values: "0+0x20"
+      - series: 'up{namespace="ci", pod="virt-operator-1"}'
+        values: "0+0x20"
+      - series: 'kube_pod_status_phase{namespace="ci", pod="virt-controller-1", phase="Running"}'
+        values: "0+0x20"
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: VirtAPIDown
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: VirtOperatorDown
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: VirtControllerDown
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: VirtAPIDown
+        exp_alerts:
+          - exp_annotations:
+              summary: "All virt-api servers are down."
+              runbook_url: "https://kubevirt.io/monitoring/runbooks/VirtAPIDown"
+            exp_labels:
+              severity: "critical"
+              operator_health_impact: "critical"
+              kubernetes_operator_part_of: "kubevirt"
+              kubernetes_operator_component: "kubevirt"
+              namespace: "ci"
+      - eval_time: 10m
+        alertname: VirtOperatorDown
+        exp_alerts:
+          - exp_annotations:
+              summary: "All virt-operator servers are down."
+              runbook_url: "https://kubevirt.io/monitoring/runbooks/VirtOperatorDown"
+            exp_labels:
+              severity: "critical"
+              operator_health_impact: "critical"
+              kubernetes_operator_part_of: "kubevirt"
+              kubernetes_operator_component: "kubevirt"
+              namespace: "ci"
+      - eval_time: 10m
+        alertname: VirtControllerDown
+        exp_alerts:
+          - exp_annotations:
+              summary: "No running virt-controller was detected for the last 10 min."
+              runbook_url: "https://kubevirt.io/monitoring/runbooks/VirtControllerDown"
+            exp_labels:
+              severity: "critical"
+              operator_health_impact: "critical"
+              kubernetes_operator_part_of: "kubevirt"
+              kubernetes_operator_component: "kubevirt"
+              namespace: "ci"
+  - interval: 1m
+    input_series:
+      - series: 'up{namespace="ci", pod="virt-api-1"}'
+        values: "1+0x20"
+      - series: 'up{namespace="ci", pod="virt-operator-1"}'
+        values: "1+0x20"
+      - series: 'kube_pod_status_phase{namespace="ci", pod="virt-controller-1", phase="Running"}'
+        values: "1+0x20"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: VirtAPIDown
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: VirtOperatorDown
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: VirtControllerDown
+        exp_alerts: []
+  - interval: 1m
+    input_series:
+      - series: 'kube_daemonset_status_number_ready{namespace="ci", daemonset="virt-handler"}'
+        values: "0+0x20"
+      - series: 'kube_daemonset_status_desired_number_scheduled{namespace="ci", daemonset="virt-handler"}'
+        values: "1+0x20"
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: VirtHandlerDaemonSetRolloutFailing
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: VirtHandlerDaemonSetRolloutFailing
+        exp_alerts:
+          - exp_annotations:
+              summary: "Some virt-handlers failed to roll out"
+              runbook_url: "https://kubevirt.io/monitoring/runbooks/VirtHandlerDaemonSetRolloutFailing"
+            exp_labels:
+              severity: "warning"
+              operator_health_impact: "warning"
+              kubernetes_operator_part_of: "kubevirt"
+              kubernetes_operator_component: "kubevirt"
+              namespace: "ci"
+              daemonset: "virt-handler"
+  - interval: 1m
+    input_series:
+      - series: 'kube_daemonset_status_number_ready{namespace="ci", daemonset="virt-handler"}'
+        values: "1+0x20"
+      - series: 'kube_daemonset_status_desired_number_scheduled{namespace="ci", daemonset="virt-handler"}'
+        values: "1+0x20"
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: VirtHandlerDaemonSetRolloutFailing
+        exp_alerts: []

@@ -92,28 +92,42 @@ var _ = Describe("Alerts", func() {
 		Expect(alertNames).To(HaveKey("VirtHandlerDaemonSetRolloutFailing"))
 	})
 
-	It("should have runbook URLs on all alerts", func() {
+	It("should set the namespace label on component alerts only", func() {
 		err := Register(registry, "kubevirt", nil)
 		Expect(err).ToNot(HaveOccurred())
-		alerts := registry.ListAlerts()
 
-		for _, a := range alerts {
-			Expect(a.Annotations).To(HaveKey("runbook_url"),
-				"alert %s should have runbook_url", a.Alert)
+		vmAlertNames := map[string]bool{
+			"VirtLauncherPodsStuckFailed":                     true,
+			"OrphanedVirtualMachineInstances":                 true,
+			"VMCannotBeEvicted":                               true,
+			"KubeVirtVMIExcessiveMigrations":                  true,
+			"OutdatedVirtualMachineInstanceWorkloads":         true,
+			"GuestVCPUQueueHighWarning":                       true,
+			"GuestVCPUQueueHighCritical":                      true,
+			"VirtualMachineStuckInUnhealthyState":             true,
+			"VirtualMachineStuckOnNode":                       true,
+			"KubeVirtVMGuestMemoryPressure":                   true,
+			"GuestFilesystemAlmostOutOfSpace":                 true,
+			"VirtualMachineInstanceHasEphemeralHotplugVolume": true,
+			"KubeVirtVMGuestMemoryAvailableLow":               true,
 		}
-	})
 
-	It("should have part_of and component labels on all alerts", func() {
-		err := Register(registry, "kubevirt", nil)
-		Expect(err).ToNot(HaveOccurred())
-		alerts := registry.ListAlerts()
-
-		for _, a := range alerts {
-			Expect(a.Labels).To(HaveKeyWithValue("kubernetes_operator_part_of", "kubevirt"),
-				"alert %s should have part_of label", a.Alert)
-			Expect(a.Labels).To(HaveKeyWithValue("kubernetes_operator_component", "kubevirt"),
-				"alert %s should have component label", a.Alert)
+		var sawComponent, sawVM bool
+		for _, alert := range registry.ListAlerts() {
+			if vmAlertNames[alert.Alert] {
+				sawVM = true
+				Expect(alert.Labels).ToNot(HaveKey("namespace"),
+					"VM alert %s must not have a static namespace label",
+					alert.Alert)
+				continue
+			}
+			sawComponent = true
+			Expect(alert.Labels).To(HaveKeyWithValue("namespace", "kubevirt"),
+				"component alert %s should have namespace=kubevirt",
+				alert.Alert)
 		}
+		Expect(sawComponent).To(BeTrue())
+		Expect(sawVM).To(BeTrue())
 	})
 
 	Context("allowlist filtering", func() {
@@ -135,6 +149,15 @@ var _ = Describe("Alerts", func() {
 
 			Expect(alertNames).To(HaveKey("VirtAPIDown"))
 			Expect(alertNames).To(HaveKey("VirtOperatorDown"))
+
+			for _, alert := range alerts {
+				Expect(alert.Labels).To(HaveKeyWithValue(
+					"kubernetes_operator_part_of", "kubevirt"))
+				Expect(alert.Labels).To(HaveKeyWithValue(
+					"kubernetes_operator_component", "kubevirt"))
+				Expect(alert.Labels).To(HaveKeyWithValue("namespace", "kubevirt"))
+				Expect(alert.Annotations).To(HaveKey("runbook_url"))
+			}
 		})
 
 		It("should register no alerts when allowlist is empty map", func() {
@@ -143,20 +166,6 @@ var _ = Describe("Alerts", func() {
 
 			alerts := registry.ListAlerts()
 			Expect(alerts).To(BeEmpty())
-		})
-
-		It("should have labels and annotations on allowlisted alerts", func() {
-			allowlist := map[string]bool{
-				"VirtAPIDown": true,
-			}
-			err := Register(registry, "kubevirt", allowlist)
-			Expect(err).ToNot(HaveOccurred())
-
-			alerts := registry.ListAlerts()
-			Expect(alerts).To(HaveLen(1))
-			Expect(alerts[0].Labels).To(HaveKeyWithValue("kubernetes_operator_part_of", "kubevirt"))
-			Expect(alerts[0].Labels).To(HaveKeyWithValue("kubernetes_operator_component", "kubevirt"))
-			Expect(alerts[0].Annotations).To(HaveKey("runbook_url"))
 		})
 	})
 })

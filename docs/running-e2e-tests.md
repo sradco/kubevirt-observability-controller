@@ -44,7 +44,7 @@ make test-e2e IMG=registry:5000/virt-observability-controller:latest
 
 This runs both suites sequentially:
 - `test/monitoring/rules/` — PrometheusRule reconciliation and allowlist filtering
-- `test/monitoring/metrics/` — custom metrics, metrics allowlist, and VMStats
+- `test/monitoring/metrics/` — custom metrics, metrics allowlist, VMStats, and inventory metrics
 
 ## 5. Run specific tests
 
@@ -72,6 +72,14 @@ Run only the VMStats tests:
 IMG=registry:5000/virt-observability-controller:latest \
   go test ./test/monitoring/metrics/ -v -ginkgo.v -ginkgo.show-node-events \
   -ginkgo.focus="VMStats Metrics" -timeout 30m
+```
+
+Run only the inventory metric tests:
+
+```bash
+IMG=registry:5000/virt-observability-controller:latest \
+  go test ./test/monitoring/metrics/ -v -ginkgo.v -ginkgo.show-node-events \
+  -ginkgo.focus="Inventory metrics" -timeout 30m
 ```
 
 Run a single test by name:

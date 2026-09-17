@@ -53,7 +53,8 @@ make build
 ### Run Tests
 
 ```sh
-make test        # unit tests
+make test        # unit tests (includes Go alert/recording-rule linters)
+make check       # unit tests plus metric-name and promtool linters
 make test-e2e    # end-to-end tests (requires kubevirtci cluster)
 ```
 
@@ -62,7 +63,13 @@ make test-e2e    # end-to-end tests (requires kubevirtci cluster)
 ```sh
 make lint
 make lint-fix
+make lint-metrics      # metric/recording-rule name linter (needs docker or podman)
+make prom-rules-verify # promtool check + unit tests (needs docker or podman)
 ```
+
+`make check` runs `make test` and then `lint-metrics` and `prom-rules-verify`.
+Those last two need `docker` or `podman` (`CONTAINER_TOOL`, default
+`docker`).
 
 ### Generate
 

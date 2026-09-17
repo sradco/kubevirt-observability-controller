@@ -55,3 +55,7 @@ func BuildPrometheusRule(name, namespace string, labels map[string]string) (*pro
 func ListRecordingRules() []operatorrules.RecordingRule {
 	return registry.ListRecordingRules()
 }
+
+func ListAlerts() []promv1.Rule {
+	return registry.ListAlerts()
+}

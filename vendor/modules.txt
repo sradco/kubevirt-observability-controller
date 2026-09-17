@@ -147,6 +147,9 @@ github.com/google/pprof/profile
 # github.com/google/uuid v1.6.0
 ## explicit
 github.com/google/uuid
+# github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd
+## explicit; go 1.17
+github.com/grafana/regexp
 # github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0
 ## explicit; go 1.25.0
 github.com/grpc-ecosystem/grpc-gateway/v2/internal/httprule
@@ -246,6 +249,7 @@ github.com/prometheus/procfs/internal/util
 github.com/rhobs/operator-observability-toolkit/pkg/docs
 github.com/rhobs/operator-observability-toolkit/pkg/operatormetrics
 github.com/rhobs/operator-observability-toolkit/pkg/operatorrules
+github.com/rhobs/operator-observability-toolkit/pkg/testutil
 # github.com/spf13/cobra v1.10.2
 ## explicit; go 1.15
 github.com/spf13/cobra

@@ -108,6 +108,25 @@ func HasLabel(line MetricLine, key, value string) bool {
 	return line.Labels[key] == value
 }
 
+func FindMetricWithLabels(output, name string, labels map[string]string) []MetricLine {
+	var found []MetricLine
+	for _, line := range FindMetric(output, name) {
+		if lineHasLabels(line, labels) {
+			found = append(found, line)
+		}
+	}
+	return found
+}
+
+func lineHasLabels(line MetricLine, labels map[string]string) bool {
+	for key, value := range labels {
+		if line.Labels[key] != value {
+			return false
+		}
+	}
+	return true
+}
+
 func parseLine(line string) MetricLine {
 	ml := MetricLine{Labels: make(map[string]string)}
 

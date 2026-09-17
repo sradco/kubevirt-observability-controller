@@ -117,6 +117,26 @@ vet: ## Run go vet against code.
 test: manifests generate fmt goimports-check vet setup-envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v /e2e | grep -v /test/ | grep -v /cmd) -coverprofile cover.out
 
+.PHONY: check
+check: test lint-metrics prom-rules-verify ## Run unit tests plus metric-name and promtool linters.
+
+.PHONY: lint-metrics
+lint-metrics: ## Lint metric and recording-rule names with prom-metrics-linter.
+	mkdir -p $(LOCALBIN)
+	go run -mod=vendor ./tools/prom-metrics-collector > $(LOCALBIN)/metrics.json
+	CONTAINER_TOOL=$(CONTAINER_TOOL) ./hack/prom-metric-linter/metric_name_linter.sh \
+		--operator-name="kubevirt" \
+		--sub-operator-name="kubevirt" \
+		--metrics-file=$(LOCALBIN)/metrics.json
+
+.PHONY: prom-rules-verify
+prom-rules-verify: ## Lint and unit-test PrometheusRule YAML with promtool.
+	mkdir -p $(LOCALBIN)
+	go build -mod=vendor -o $(LOCALBIN)/rule-spec-dumper ./hack/prom-rule-ci
+	CONTAINER_TOOL=$(CONTAINER_TOOL) ./hack/prom-rule-ci/verify-rules.sh \
+		"$(abspath $(LOCALBIN)/rule-spec-dumper)" \
+		"$(abspath hack/prom-rule-ci/prom-rules-tests.yaml)"
+
 .PHONY: test-e2e
 test-e2e: ## Run e2e tests against a KubeVirt cluster.
 	go test ./test/monitoring/rules/ -v -ginkgo.v -ginkgo.show-node-events -timeout 30m

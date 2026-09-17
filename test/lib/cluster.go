@@ -125,6 +125,30 @@ func DeleteTestVMI(namespace string) error {
 	return err
 }
 
+func DeleteNamespacedResource(kind, name, namespace string) error {
+	_, err := Kubectl("delete", kind, name, "-n", namespace, "--ignore-not-found")
+	return err
+}
+
+func CreateHaltedTestVM(namespace, name string) error {
+	manifest := fmt.Sprintf(`apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  runStrategy: Halted
+  template:
+    spec:
+      domain:
+        devices: {}
+        resources:
+          requests:
+            memory: 64Mi
+      terminationGracePeriodSeconds: 0`, name, namespace)
+	return KubectlApply(manifest)
+}
+
 func WaitForVMIRunning(namespace, name string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	var lastPhase string

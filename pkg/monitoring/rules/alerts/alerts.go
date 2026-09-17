@@ -39,6 +39,7 @@ const (
 	descriptionAnnotationKey     = "description"
 	partOfAlertLabelKey          = "kubernetes_operator_part_of"
 	componentAlertLabelKey       = "kubernetes_operator_component"
+	namespaceAlertLabelKey       = "namespace"
 	kubevirtLabelValue           = "kubevirt"
 
 	eightyPercent = 80
@@ -46,27 +47,39 @@ const (
 )
 
 func Register(registry *operatorrules.Registry, namespace string, allowlist map[string]bool) error {
-	allAlerts := [][]promv1.Rule{
+	componentAlerts := [][]promv1.Rule{
 		systemAlerts(namespace),
 		virtAPIAlerts(namespace),
 		virtControllerAlerts(namespace),
 		virtHandlerAlerts(namespace),
 		virtOperatorAlerts(namespace),
-		vmsAlerts,
 	}
 
-	if allowlist != nil {
-		for i := range allAlerts {
-			allAlerts[i] = filterAlerts(allAlerts[i], allowlist)
-		}
-	}
+	allAlerts := make([][]promv1.Rule, 0, len(componentAlerts)+1)
+	allAlerts = append(allAlerts, componentAlerts...)
+	allAlerts = append(allAlerts, vmsAlerts)
 
 	runbookURLTemplate := getRunbookURLTemplate()
 	for _, alertGroup := range allAlerts {
 		for i := range alertGroup {
 			alertGroup[i].Labels[partOfAlertLabelKey] = kubevirtLabelValue
 			alertGroup[i].Labels[componentAlertLabelKey] = kubevirtLabelValue
-			alertGroup[i].Annotations[prometheusRunbookAnnotationKey] = fmt.Sprintf(runbookURLTemplate, alertGroup[i].Alert)
+			alertGroup[i].Annotations[prometheusRunbookAnnotationKey] = fmt.Sprintf(
+				runbookURLTemplate, alertGroup[i].Alert)
+		}
+	}
+
+	// Component and system alerts operate in the KubeVirt install namespace.
+	// VM workload alerts derive namespace from their PromQL expression instead.
+	for _, alertGroup := range componentAlerts {
+		for i := range alertGroup {
+			alertGroup[i].Labels[namespaceAlertLabelKey] = namespace
+		}
+	}
+
+	if allowlist != nil {
+		for i := range allAlerts {
+			allAlerts[i] = filterAlerts(allAlerts[i], allowlist)
 		}
 	}
 
