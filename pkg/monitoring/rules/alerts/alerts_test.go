@@ -112,6 +112,7 @@ var _ = Describe("Alerts", func() {
 			"VirtualMachineInstanceHasEphemeralHotplugVolume": true,
 			"KubeVirtVMGuestMemoryAvailableLow":               true,
 			"KubeVirtVMIOrdinalPodInterfaceName":              true,
+			"VMNonRecoverableOSPanic":                         true,
 		}
 
 		var sawComponent, sawVM bool

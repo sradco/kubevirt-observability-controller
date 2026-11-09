@@ -1,6 +1,10 @@
 rule_files:
   - rules.yaml
 
+group_eval_order:
+  - recordingRules.rules
+  - alerts.rules
+
 evaluation_interval: 1m
 
 tests:
@@ -23,6 +27,7 @@ tests:
           - exp_labels:
               namespace: default
               name: vm-old
+              vm: vm-old
               device_id: "1041"
               driver_name: netkvm
               driver_version: "100.85.104.16700"
@@ -66,6 +71,7 @@ tests:
           - exp_labels:
               namespace: default
               name: vm-ordinal
+              vm: vm-ordinal
               severity: warning
               operator_health_impact: none
               kubernetes_operator_part_of: kubevirt
@@ -94,5 +100,855 @@ tests:
         values: '1x10'
     alert_rule_test:
       - alertname: KubeVirtVMIOrdinalPodInterfaceName
-        eval_time: 6m
-        exp_alerts: []
+  # ---------------------------------------------------------------------------
+  # Test cases ported from kubevirt hack/prom-rule-ci/prom-rules-tests.yaml
+  # (kept in sync with pkg/monitoring/rules/alerts/vms.go).
+  # ---------------------------------------------------------------------------
+
+  - interval: 1m
+    input_series:
+    - series: kubevirt_vmi_info{phase="running", node="node1", namespace="ns-test", name="vm-evict-nonmigratable"}
+      values: 0 0 0 0 1 1 1 1
+    - series: kubevirt_vmi_non_evictable{node="node1", namespace="ns-test", name="vm-evict-nonmigratable"}
+      values: 1 1 1 1 1 1 1 1
+    alert_rule_test:
+    - eval_time: 1m
+      alertname: VMCannotBeEvicted
+      exp_alerts: []
+    - eval_time: 5m
+      alertname: VMCannotBeEvicted
+      exp_alerts:
+      - exp_annotations:
+          description: Eviction policy for VirtualMachine vm-evict-nonmigratable in namespace ns-test (on
+            node node1) is set to Live Migration but the VM is not migratable
+          summary: The VM's eviction strategy is set to Live Migration but the VM is not migratable
+          runbook_url: https://kubevirt.io/monitoring/runbooks/VMCannotBeEvicted
+        exp_labels:
+          severity: warning
+          operator_health_impact: none
+          kubernetes_operator_part_of: kubevirt
+          kubernetes_operator_component: kubevirt
+          name: vm-evict-nonmigratable
+          vm: vm-evict-nonmigratable
+          namespace: ns-test
+          node: node1
+
+  - interval: 1m
+    input_series:
+    - series: kubevirt_vmi_info{phase="running", node="node1", namespace="ns-test", name="vm-evict-migratable"}
+      values: 1 1 1 1 1 1 1 1
+    - series: kubevirt_vmi_non_evictable{node="node1", namespace="ns-test", name="vm-evict-migratable"}
+      values: '0 0 0 0 0 0 0 0 '
+    alert_rule_test:
+    - eval_time: 1m
+      alertname: VMCannotBeEvicted
+      exp_alerts: []
+
+  - interval: 1h
+    input_series:
+    - series: kubevirt_vmi_migration_succeeded{vmi="vmi-example-1", namespace="namespace-example-1"}
+      values: _ _ _ 1 7 13
+    alert_rule_test:
+    - eval_time: 4h
+      alertname: KubeVirtVMIExcessiveMigrations
+      exp_alerts: []
+    - eval_time: 5h
+      alertname: KubeVirtVMIExcessiveMigrations
+      exp_alerts:
+      - exp_annotations:
+          description: VirtualMachineInstance vmi-example-1 in namespace namespace-example-1 has been migrated
+            more than 12 times during the last 24 hours
+          summary: An excessive amount of migrations have been detected on a VirtualMachineInstance in the
+            last 24 hours.
+          runbook_url: https://kubevirt.io/monitoring/runbooks/KubeVirtVMIExcessiveMigrations
+        exp_labels:
+          severity: warning
+          operator_health_impact: none
+          kubernetes_operator_part_of: kubevirt
+          kubernetes_operator_component: kubevirt
+          vmi: vmi-example-1
+          vm: vmi-example-1
+          namespace: namespace-example-1
+    - eval_time: 24h
+      alertname: KubeVirtVMIExcessiveMigrations
+      exp_alerts:
+      - exp_annotations:
+          description: VirtualMachineInstance vmi-example-1 in namespace namespace-example-1 has been migrated
+            more than 12 times during the last 24 hours
+          summary: An excessive amount of migrations have been detected on a VirtualMachineInstance in the
+            last 24 hours.
+          runbook_url: https://kubevirt.io/monitoring/runbooks/KubeVirtVMIExcessiveMigrations
+        exp_labels:
+          severity: warning
+          operator_health_impact: none
+          kubernetes_operator_part_of: kubevirt
+          kubernetes_operator_component: kubevirt
+          vmi: vmi-example-1
+          vm: vmi-example-1
+          namespace: namespace-example-1
+    - eval_time: 30h
+      alertname: KubeVirtVMIExcessiveMigrations
+      exp_alerts: []
+
+  - interval: 1h
+    input_series:
+    - series: kubevirt_vmi_migration_succeeded{vmi="vmi-example-1", namespace="namespace-example-1"}
+      values: _ 1 2 3 8 10 10
+    - series: kubevirt_vmi_migration_succeeded{vmi="vmi-example-1", namespace="namespace-example-1", vmim="same-migration",
+        pod="virt-controller-1"}
+      values: _ _ _ 1 1 1 2
+    - series: kubevirt_vmi_migration_succeeded{vmi="vmi-example-1", namespace="namespace-example-1", vmim="same-migration",
+        pod="virt-controller-2"}
+      values: _ _ _ 1 1 1 2
+    alert_rule_test:
+    - eval_time: 5h
+      alertname: KubeVirtVMIExcessiveMigrations
+      exp_alerts: []
+    - eval_time: 6h
+      alertname: KubeVirtVMIExcessiveMigrations
+      exp_alerts:
+      - exp_annotations:
+          description: VirtualMachineInstance vmi-example-1 in namespace namespace-example-1 has been migrated
+            more than 12 times during the last 24 hours
+          summary: An excessive amount of migrations have been detected on a VirtualMachineInstance in the
+            last 24 hours.
+          runbook_url: https://kubevirt.io/monitoring/runbooks/KubeVirtVMIExcessiveMigrations
+        exp_labels:
+          severity: warning
+          operator_health_impact: none
+          kubernetes_operator_part_of: kubevirt
+          kubernetes_operator_component: kubevirt
+          vmi: vmi-example-1
+          vm: vmi-example-1
+          namespace: namespace-example-1
+
+  - interval: 1m
+    input_series:
+    - series: kubevirt_vmi_guest_load_1m{namespace="testns",name="vm1"}
+      values: 0  12  25  5
+    - series: kubevirt_vmi_vcpu_seconds_total{namespace="testns",name="vm1",id="0"}
+      values: 0  0   0   0
+    - series: kubevirt_vmi_vcpu_seconds_total{namespace="testns",name="vm1",id="1"}
+      values: 0  0   0   0
+    alert_rule_test:
+    - eval_time: 1m
+      alertname: GuestVCPUQueueHighWarning
+      exp_alerts: []
+    - eval_time: 1m
+      alertname: GuestVCPUQueueHighCritical
+      exp_alerts: []
+    - eval_time: 2m
+      alertname: GuestVCPUQueueHighWarning
+      exp_alerts:
+      - exp_annotations:
+          description: VirtualMachineInstance vm1 CPU queue length > 10
+          summary: Guest vCPU Queue within collection cycle > 10
+          runbook_url: https://kubevirt.io/monitoring/runbooks/GuestVCPUQueueHighWarning
+        exp_labels:
+          severity: warning
+          operator_health_impact: none
+          kubernetes_operator_part_of: kubevirt
+          kubernetes_operator_component: kubevirt
+          namespace: testns
+          name: vm1
+          vm: vm1
+    - eval_time: 2m
+      alertname: GuestVCPUQueueHighCritical
+      exp_alerts:
+      - exp_annotations:
+          description: VirtualMachineInstance vm1 CPU queue length > 20
+          summary: Guest vCPU Queue within collection cycle > 20
+          runbook_url: https://kubevirt.io/monitoring/runbooks/GuestVCPUQueueHighCritical
+        exp_labels:
+          severity: critical
+          operator_health_impact: none
+          kubernetes_operator_part_of: kubevirt
+          kubernetes_operator_component: kubevirt
+          namespace: testns
+          name: vm1
+          vm: vm1
+    - eval_time: 3m
+      alertname: GuestVCPUQueueHighWarning
+      exp_alerts: []
+    - eval_time: 3m
+      alertname: GuestVCPUQueueHighCritical
+      exp_alerts: []
+
+  - interval: 1m
+    input_series:
+    - series: kubevirt_vm_info{name="vm-stuck-provisioning", namespace="test-ns", status="provisioning",
+        status_group="starting"}
+      values: 1x16
+    - series: kubevirt_vm_info{name="vm-stuck-starting-no-vmi", namespace="test-ns", status="starting",
+        status_group="starting"}
+      values: 1x16
+    - series: kubevirt_vm_info{name="vm-unschedulable", namespace="test-ns", status="ErrorUnschedulable",
+        status_group="error"}
+      values: 1x16
+    - series: kubevirt_vm_info{name="vm-pvc-missing", namespace="test-ns", status="ErrorPvcNotFound", status_group="error"}
+      values: 1x16
+    - series: kubevirt_vm_info{name="vm-terminating-no-vmi", namespace="test-ns", status="terminating",
+        status_group="non_running"}
+      values: 1x16
+    - series: kubevirt_vm_info{name="vm-stopped", namespace="test-ns", status="stopped", status_group="non_running"}
+      values: 1x16
+    alert_rule_test:
+    - eval_time: 9m
+      alertname: VirtualMachineStuckInUnhealthyState
+      exp_alerts: []
+    - eval_time: 10m
+      alertname: VirtualMachineStuckInUnhealthyState
+      exp_alerts:
+      - exp_annotations:
+          summary: Virtual machine in provisioning state for more than 10 minutes
+          description: Virtual machine vm-stuck-provisioning in namespace test-ns has been in provisioning
+            state for more than 10 minutes.
+          runbook_url: https://kubevirt.io/monitoring/runbooks/VirtualMachineStuckInUnhealthyState
+        exp_labels:
+          severity: warning
+          operator_health_impact: none
+          kubernetes_operator_part_of: kubevirt
+          kubernetes_operator_component: kubevirt
+          name: vm-stuck-provisioning
+          vm: vm-stuck-provisioning
+          namespace: test-ns
+          status: provisioning
+      - exp_annotations:
+          summary: Virtual machine in starting state for more than 10 minutes
+          description: Virtual machine vm-stuck-starting-no-vmi in namespace test-ns has been in starting
+            state for more than 10 minutes.
+          runbook_url: https://kubevirt.io/monitoring/runbooks/VirtualMachineStuckInUnhealthyState
+        exp_labels:
+          severity: warning
+          operator_health_impact: none
+          kubernetes_operator_part_of: kubevirt
+          kubernetes_operator_component: kubevirt
+          name: vm-stuck-starting-no-vmi
+          vm: vm-stuck-starting-no-vmi
+          namespace: test-ns
+          status: starting
+      - exp_annotations:
+          summary: Virtual machine in ErrorUnschedulable state for more than 10 minutes
+          description: Virtual machine vm-unschedulable in namespace test-ns has been in ErrorUnschedulable
+            state for more than 10 minutes.
+          runbook_url: https://kubevirt.io/monitoring/runbooks/VirtualMachineStuckInUnhealthyState
+        exp_labels:
+          severity: warning
+          operator_health_impact: none
+          kubernetes_operator_part_of: kubevirt
+          kubernetes_operator_component: kubevirt
+          name: vm-unschedulable
+          vm: vm-unschedulable
+          namespace: test-ns
+          status: ErrorUnschedulable
+      - exp_annotations:
+          summary: Virtual machine in ErrorPvcNotFound state for more than 10 minutes
+          description: Virtual machine vm-pvc-missing in namespace test-ns has been in ErrorPvcNotFound
+            state for more than 10 minutes.
+          runbook_url: https://kubevirt.io/monitoring/runbooks/VirtualMachineStuckInUnhealthyState
+        exp_labels:
+          severity: warning
+          operator_health_impact: none
+          kubernetes_operator_part_of: kubevirt
+          kubernetes_operator_component: kubevirt
+          name: vm-pvc-missing
+          vm: vm-pvc-missing
+          namespace: test-ns
+          status: ErrorPvcNotFound
+      - exp_annotations:
+          summary: Virtual machine in terminating state for more than 10 minutes
+          description: Virtual machine vm-terminating-no-vmi in namespace test-ns has been in terminating
+            state for more than 10 minutes.
+          runbook_url: https://kubevirt.io/monitoring/runbooks/VirtualMachineStuckInUnhealthyState
+        exp_labels:
+          severity: warning
+          operator_health_impact: none
+          kubernetes_operator_part_of: kubevirt
+          kubernetes_operator_component: kubevirt
+          name: vm-terminating-no-vmi
+          vm: vm-terminating-no-vmi
+          namespace: test-ns
+          status: terminating
+
+  - interval: 1m
+    input_series:
+    - series: kubevirt_vm_info{name="vm-stuck-starting", namespace="test-ns", status="starting", status_group="starting"}
+      values: 1x11
+    - series: kubevirt_vmi_info{name="vm-stuck-starting", namespace="test-ns", node="worker-node-1", phase="running"}
+      values: 1x11
+    - series: kubevirt_vm_info{name="vm-image-error", namespace="test-ns", status="ErrImagePull", status_group="error"}
+      values: 1x11
+    - series: kubevirt_vmi_info{name="vm-image-error", namespace="test-ns", node="worker-node-2", phase="running"}
+      values: 1x11
+    - series: kubevirt_vm_info{name="vm-stuck-stopping", namespace="test-ns", status="stopping", status_group="non_running"}
+      values: 1x11
+    - series: kubevirt_vmi_info{name="vm-stuck-stopping", namespace="test-ns", node="worker-node-3", phase="running"}
+      values: 1x11
+    - series: kubevirt_vm_info{name="vm-terminating-with-vmi", namespace="test-ns", status="terminating",
+        status_group="non_running"}
+      values: 1x11
+    - series: kubevirt_vmi_info{name="vm-terminating-with-vmi", namespace="test-ns", node="worker-node-4",
+        phase="scheduled"}
+      values: 1x11
+    - series: kubevirt_vm_info{name="vm-running", namespace="test-ns", status="running", status_group="running"}
+      values: 1x11
+    - series: kubevirt_vmi_info{name="vm-running", namespace="test-ns", node="worker-node-5", phase="running"}
+      values: 1x11
+    - series: kubevirt_vm_info{name="vm-paused", namespace="test-ns", status="paused", status_group="running"}
+      values: 1x11
+    - series: kubevirt_vmi_info{name="vm-paused", namespace="test-ns", node="worker-node-6", phase="scheduled"}
+      values: 1x11
+    - series: kubevirt_vm_info{name="vm-starting-no-vmi", namespace="test-ns", status="starting", status_group="starting"}
+      values: 1x11
+    - series: kubevirt_vm_info{name="vm-starting-pending-vmi", namespace="test-ns", status="starting", status_group="starting"}
+      values: 1x11
+    - series: kubevirt_vmi_info{name="vm-starting-pending-vmi", namespace="test-ns", node="worker-node-11",
+        phase="pending"}
+      values: 1x11
+    - series: kubevirt_vm_info{name="vm-error-failed-vmi", namespace="test-ns", status="CrashLoopBackOff",
+        status_group="error"}
+      values: 1x11
+    - series: kubevirt_vmi_info{name="vm-error-failed-vmi", namespace="test-ns", node="worker-node-12",
+        phase="failed"}
+      values: 1x11
+    alert_rule_test:
+    - eval_time: 4m
+      alertname: VirtualMachineStuckOnNode
+      exp_alerts: []
+    - eval_time: 5m
+      alertname: VirtualMachineStuckOnNode
+      exp_alerts:
+      - exp_annotations:
+          summary: Virtual machine stuck in unhealthy state for more than 5 minutes
+          description: Virtual machine vm-stuck-starting in namespace test-ns on node worker-node-1 has
+            been in starting state for more than 5 minutes. This may indicate issues with the VM lifecycle
+            on the target node.
+          runbook_url: https://kubevirt.io/monitoring/runbooks/VirtualMachineStuckOnNode
+        exp_labels:
+          severity: warning
+          operator_health_impact: none
+          kubernetes_operator_part_of: kubevirt
+          kubernetes_operator_component: kubevirt
+          name: vm-stuck-starting
+          vm: vm-stuck-starting
+          namespace: test-ns
+          status: starting
+          node: worker-node-1
+      - exp_annotations:
+          summary: Virtual machine stuck in unhealthy state for more than 5 minutes
+          description: Virtual machine vm-image-error in namespace test-ns on node worker-node-2 has been
+            in ErrImagePull state for more than 5 minutes. This may indicate issues with the VM lifecycle
+            on the target node.
+          runbook_url: https://kubevirt.io/monitoring/runbooks/VirtualMachineStuckOnNode
+        exp_labels:
+          severity: warning
+          operator_health_impact: none
+          kubernetes_operator_part_of: kubevirt
+          kubernetes_operator_component: kubevirt
+          name: vm-image-error
+          vm: vm-image-error
+          namespace: test-ns
+          status: ErrImagePull
+          node: worker-node-2
+      - exp_annotations:
+          summary: Virtual machine stuck in unhealthy state for more than 5 minutes
+          description: Virtual machine vm-stuck-stopping in namespace test-ns on node worker-node-3 has
+            been in stopping state for more than 5 minutes. This may indicate issues with the VM lifecycle
+            on the target node.
+          runbook_url: https://kubevirt.io/monitoring/runbooks/VirtualMachineStuckOnNode
+        exp_labels:
+          severity: warning
+          operator_health_impact: none
+          kubernetes_operator_part_of: kubevirt
+          kubernetes_operator_component: kubevirt
+          name: vm-stuck-stopping
+          vm: vm-stuck-stopping
+          namespace: test-ns
+          status: stopping
+          node: worker-node-3
+      - exp_annotations:
+          summary: Virtual machine stuck in unhealthy state for more than 5 minutes
+          description: Virtual machine vm-terminating-with-vmi in namespace test-ns on node worker-node-4
+            has been in terminating state for more than 5 minutes. This may indicate issues with the VM
+            lifecycle on the target node.
+          runbook_url: https://kubevirt.io/monitoring/runbooks/VirtualMachineStuckOnNode
+        exp_labels:
+          severity: warning
+          operator_health_impact: none
+          kubernetes_operator_part_of: kubevirt
+          kubernetes_operator_component: kubevirt
+          name: vm-terminating-with-vmi
+          vm: vm-terminating-with-vmi
+          namespace: test-ns
+          status: terminating
+          node: worker-node-4
+
+  - interval: 1m
+    input_series:
+    - series: kubevirt_vm_info{name="vm-phase-overlap", namespace="test-ns", status="starting", status_group="starting"}
+      values: 1x11
+    - series: kubevirt_vmi_info{name="vm-phase-overlap", namespace="test-ns", phase="scheduling"}
+      values: 1x11
+    - series: kubevirt_vmi_info{name="vm-phase-overlap", namespace="test-ns", phase="running", node="worker-node-7"}
+      values: 1x11
+    - series: kubevirt_vm_info{name="vm-stuck-scheduled", namespace="test-ns", status="starting", status_group="starting"}
+      values: 1x11
+    - series: kubevirt_vmi_info{name="vm-stuck-scheduled", namespace="test-ns", phase="scheduled", node="worker-node-8"}
+      values: 1x11
+    - series: kubevirt_vm_info{name="vm-sched-run-overlap", namespace="test-ns", status="starting", status_group="starting"}
+      values: 1x11
+    - series: kubevirt_vmi_info{name="vm-sched-run-overlap", namespace="test-ns", phase="scheduled", node="worker-node-9"}
+      values: 1x11
+    - series: kubevirt_vmi_info{name="vm-sched-run-overlap", namespace="test-ns", phase="running", node="worker-node-10"}
+      values: 2x11
+    - series: kubevirt_vm_info{name="vm-migration-overlap", namespace="test-ns", status="stopping", status_group="non_running"}
+      values: 1x11
+    - series: kubevirt_vmi_info{name="vm-migration-overlap", namespace="test-ns", phase="running", node="source-node"}
+      values: 2x11
+    - series: kubevirt_vmi_info{name="vm-migration-overlap", namespace="test-ns", phase="running", node="target-node"}
+      values: 1x11
+    - series: kubevirt_vm_info{name="vm-error-migration", namespace="test-ns", status="ErrImagePull", status_group="error"}
+      values: 1x11
+    - series: kubevirt_vmi_info{name="vm-error-migration", namespace="test-ns", phase="running", node="source-node-2"}
+      values: 2x11
+    - series: kubevirt_vmi_info{name="vm-error-migration", namespace="test-ns", phase="running", node="target-node-2"}
+      values: 1x11
+    alert_rule_test:
+    - eval_time: 4m
+      alertname: VirtualMachineStuckOnNode
+      exp_alerts: []
+    - eval_time: 5m
+      alertname: VirtualMachineStuckOnNode
+      exp_alerts:
+      - exp_annotations:
+          summary: Virtual machine stuck in unhealthy state for more than 5 minutes
+          description: Virtual machine vm-phase-overlap in namespace test-ns on node worker-node-7 has been
+            in starting state for more than 5 minutes. This may indicate issues with the VM lifecycle on
+            the target node.
+          runbook_url: https://kubevirt.io/monitoring/runbooks/VirtualMachineStuckOnNode
+        exp_labels:
+          severity: warning
+          operator_health_impact: none
+          kubernetes_operator_part_of: kubevirt
+          kubernetes_operator_component: kubevirt
+          name: vm-phase-overlap
+          vm: vm-phase-overlap
+          namespace: test-ns
+          status: starting
+          node: worker-node-7
+      - exp_annotations:
+          summary: Virtual machine stuck in unhealthy state for more than 5 minutes
+          description: Virtual machine vm-stuck-scheduled in namespace test-ns on node worker-node-8 has
+            been in starting state for more than 5 minutes. This may indicate issues with the VM lifecycle
+            on the target node.
+          runbook_url: https://kubevirt.io/monitoring/runbooks/VirtualMachineStuckOnNode
+        exp_labels:
+          severity: warning
+          operator_health_impact: none
+          kubernetes_operator_part_of: kubevirt
+          kubernetes_operator_component: kubevirt
+          name: vm-stuck-scheduled
+          vm: vm-stuck-scheduled
+          namespace: test-ns
+          status: starting
+          node: worker-node-8
+      - exp_annotations:
+          summary: Virtual machine stuck in unhealthy state for more than 5 minutes
+          description: Virtual machine vm-sched-run-overlap in namespace test-ns on node worker-node-10
+            has been in starting state for more than 5 minutes. This may indicate issues with the VM lifecycle
+            on the target node.
+          runbook_url: https://kubevirt.io/monitoring/runbooks/VirtualMachineStuckOnNode
+        exp_labels:
+          severity: warning
+          operator_health_impact: none
+          kubernetes_operator_part_of: kubevirt
+          kubernetes_operator_component: kubevirt
+          name: vm-sched-run-overlap
+          vm: vm-sched-run-overlap
+          namespace: test-ns
+          status: starting
+          node: worker-node-10
+      - exp_annotations:
+          summary: Virtual machine stuck in unhealthy state for more than 5 minutes
+          description: Virtual machine vm-error-migration in namespace test-ns on node source-node-2 has
+            been in ErrImagePull state for more than 5 minutes. This may indicate issues with the VM lifecycle
+            on the target node.
+          runbook_url: https://kubevirt.io/monitoring/runbooks/VirtualMachineStuckOnNode
+        exp_labels:
+          severity: warning
+          operator_health_impact: none
+          kubernetes_operator_part_of: kubevirt
+          kubernetes_operator_component: kubevirt
+          name: vm-error-migration
+          vm: vm-error-migration
+          namespace: test-ns
+          status: ErrImagePull
+          node: source-node-2
+      - exp_annotations:
+          summary: Virtual machine stuck in unhealthy state for more than 5 minutes
+          description: Virtual machine vm-migration-overlap in namespace test-ns on node source-node has
+            been in stopping state for more than 5 minutes. This may indicate issues with the VM lifecycle
+            on the target node.
+          runbook_url: https://kubevirt.io/monitoring/runbooks/VirtualMachineStuckOnNode
+        exp_labels:
+          severity: warning
+          operator_health_impact: none
+          kubernetes_operator_part_of: kubevirt
+          kubernetes_operator_component: kubevirt
+          name: vm-migration-overlap
+          vm: vm-migration-overlap
+          namespace: test-ns
+          status: stopping
+          node: source-node
+
+  - interval: 1m
+    input_series:
+    - series: kubevirt_vmi_non_evictable{node="node1", namespace="ns-test", name="vm-evict-migration"}
+      values: 1 1 1 1 1 1 1 1
+    - series: kubevirt_vmi_info{phase="running", node="node1", namespace="ns-test", name="vm-evict-migration"}
+      values: 1 1 1 1 1 1 1 1
+    - series: kubevirt_vmi_info{phase="running", node="node2", namespace="ns-test", name="vm-evict-migration"}
+      values: 1 1 1 1 1 1 1 1
+    alert_rule_test:
+    - eval_time: 1m
+      alertname: VMCannotBeEvicted
+      exp_alerts:
+      - exp_annotations:
+          description: Eviction policy for VirtualMachine vm-evict-migration in namespace ns-test (on node
+            node1) is set to Live Migration but the VM is not migratable
+          summary: The VM's eviction strategy is set to Live Migration but the VM is not migratable
+          runbook_url: https://kubevirt.io/monitoring/runbooks/VMCannotBeEvicted
+        exp_labels:
+          severity: warning
+          operator_health_impact: none
+          kubernetes_operator_part_of: kubevirt
+          kubernetes_operator_component: kubevirt
+          name: vm-evict-migration
+          vm: vm-evict-migration
+          namespace: ns-test
+          node: node1
+
+  - interval: 1m
+    input_series:
+    - series: kubevirt_vmi_filesystem_capacity_bytes{name="test-vm", namespace="test-ns", disk_name="vda",
+        mount_point="/", file_system_type="ext4"}
+      values: 100x10
+    - series: kubevirt_vmi_filesystem_used_bytes{name="test-vm", namespace="test-ns", disk_name="vda", mount_point="/",
+        file_system_type="ext4"}
+      values: 80 80 85 85 85 86 86 86 86 86 86 86 86 75 75
+    alert_rule_test:
+    - eval_time: 1m
+      alertname: GuestFilesystemAlmostOutOfSpace
+      exp_alerts: []
+    - eval_time: 7m
+      alertname: GuestFilesystemAlmostOutOfSpace
+      exp_alerts: []
+    - eval_time: 12m
+      alertname: GuestFilesystemAlmostOutOfSpace
+      exp_alerts:
+      - exp_annotations:
+          summary: Guest filesystem is running out of space
+          description: 'VirtualMachineInstance test-vm in namespace test-ns has filesystem vda (/) usage
+            above 85% (current: 86%).'
+          runbook_url: https://kubevirt.io/monitoring/runbooks/GuestFilesystemAlmostOutOfSpace
+        exp_labels:
+          severity: warning
+          operator_health_impact: none
+          kubernetes_operator_part_of: kubevirt
+          kubernetes_operator_component: kubevirt
+          name: test-vm
+          vm: test-vm
+          namespace: test-ns
+          disk_name: vda
+          mount_point: /
+          file_system_type: ext4
+    - eval_time: 13m
+      alertname: GuestFilesystemAlmostOutOfSpace
+      exp_alerts: []
+
+  - interval: 1m
+    input_series:
+    - series: kubevirt_vmi_filesystem_capacity_bytes{name="test-vm", namespace="test-ns", disk_name="vda",
+        mount_point="/", file_system_type="ext4"}
+      values: 100x10
+    - series: kubevirt_vmi_filesystem_used_bytes{name="test-vm", namespace="test-ns", disk_name="vda", mount_point="/",
+        file_system_type="ext4"}
+      values: 90 90 95 95 95 96 96 96 85 85
+    alert_rule_test:
+    - eval_time: 1m
+      alertname: GuestFilesystemAlmostOutOfSpace
+      exp_alerts: []
+    - eval_time: 3m
+      alertname: GuestFilesystemAlmostOutOfSpace
+      exp_alerts:
+      - exp_annotations:
+          summary: Guest filesystem is critically low on space
+          description: 'VirtualMachineInstance test-vm in namespace test-ns has filesystem vda (/) usage
+            above 95% (current: 95%).'
+          runbook_url: https://kubevirt.io/monitoring/runbooks/GuestFilesystemAlmostOutOfSpace
+        exp_labels:
+          severity: critical
+          operator_health_impact: none
+          kubernetes_operator_part_of: kubevirt
+          kubernetes_operator_component: kubevirt
+          name: test-vm
+          vm: test-vm
+          namespace: test-ns
+          disk_name: vda
+          mount_point: /
+          file_system_type: ext4
+    - eval_time: 7m
+      alertname: GuestFilesystemAlmostOutOfSpace
+      exp_alerts:
+      - exp_annotations:
+          summary: Guest filesystem is critically low on space
+          description: 'VirtualMachineInstance test-vm in namespace test-ns has filesystem vda (/) usage
+            above 95% (current: 96%).'
+          runbook_url: https://kubevirt.io/monitoring/runbooks/GuestFilesystemAlmostOutOfSpace
+        exp_labels:
+          severity: critical
+          operator_health_impact: none
+          kubernetes_operator_part_of: kubevirt
+          kubernetes_operator_component: kubevirt
+          name: test-vm
+          vm: test-vm
+          namespace: test-ns
+          disk_name: vda
+          mount_point: /
+          file_system_type: ext4
+    - eval_time: 8m
+      alertname: GuestFilesystemAlmostOutOfSpace
+      exp_alerts: []
+
+  - interval: 1m
+    input_series:
+    - series: kubevirt_vmi_filesystem_capacity_bytes{name="test-vm", namespace="test-ns", disk_name="vdb",
+        mount_point="/mnt/sshfs", file_system_type="fuse.sshfs"}
+      values: 100x10
+    - series: kubevirt_vmi_filesystem_used_bytes{name="test-vm", namespace="test-ns", disk_name="vdb", mount_point="/mnt/sshfs",
+        file_system_type="fuse.sshfs"}
+      values: 96 96 96 96 96 96 96 96 96 96
+    alert_rule_test:
+    - eval_time: 3m
+      alertname: GuestFilesystemAlmostOutOfSpace
+      exp_alerts: []
+
+  - interval: 1m
+    input_series:
+    - series: kubevirt_vmi_filesystem_capacity_bytes{name="test-vm", namespace="test-ns", disk_name="vdc",
+        mount_point="/", file_system_type="overlay"}
+      values: 100x10
+    - series: kubevirt_vmi_filesystem_used_bytes{name="test-vm", namespace="test-ns", disk_name="vdc", mount_point="/",
+        file_system_type="overlay"}
+      values: 96 96 96 96 96 96 96 96 96 96
+    alert_rule_test:
+    - eval_time: 3m
+      alertname: GuestFilesystemAlmostOutOfSpace
+      exp_alerts: []
+
+  - interval: 1m
+    input_series:
+    - series: kubevirt_vmi_filesystem_capacity_bytes{name="win-vm", namespace="test-ns", disk_name="sda1",
+        mount_point="System Reserved", file_system_type="ntfs"}
+      values: 100x10
+    - series: kubevirt_vmi_filesystem_used_bytes{name="win-vm", namespace="test-ns", disk_name="sda1", mount_point="System
+        Reserved", file_system_type="ntfs"}
+      values: 96 96 96 96 96 96 96 96 96 96
+    alert_rule_test:
+    - eval_time: 3m
+      alertname: GuestFilesystemAlmostOutOfSpace
+      exp_alerts: []
+
+  - interval: 1m
+    input_series:
+    - series: kubevirt_vmi_filesystem_capacity_bytes{name="win-vm", namespace="test-ns", disk_name="cdrom",
+        mount_point="D:\\", file_system_type="CDFS"}
+      values: 100x10
+    - series: kubevirt_vmi_filesystem_used_bytes{name="win-vm", namespace="test-ns", disk_name="cdrom",
+        mount_point="D:\\", file_system_type="CDFS"}
+      values: 100 100 100 100 100 100 100 100 100 100
+    alert_rule_test:
+    - eval_time: 3m
+      alertname: GuestFilesystemAlmostOutOfSpace
+      exp_alerts: []
+
+  - interval: 1m
+    input_series:
+    - series: kubevirt_vmi_filesystem_capacity_bytes{name="win-vm", namespace="test-ns", disk_name="cdrom",
+        mount_point="D:\\", file_system_type="UDF"}
+      values: 100x10
+    - series: kubevirt_vmi_filesystem_used_bytes{name="win-vm", namespace="test-ns", disk_name="cdrom",
+        mount_point="D:\\", file_system_type="UDF"}
+      values: 100 100 100 100 100 100 100 100 100 100
+    alert_rule_test:
+    - eval_time: 3m
+      alertname: GuestFilesystemAlmostOutOfSpace
+      exp_alerts: []
+
+  - interval: 1m
+    input_series:
+    - series: kubevirt_vmi_filesystem_capacity_bytes{name="linux-vm", namespace="test-ns", disk_name="sr0",
+        mount_point="/mnt/cdrom", file_system_type="iso9660"}
+      values: 100x10
+    - series: kubevirt_vmi_filesystem_used_bytes{name="linux-vm", namespace="test-ns", disk_name="sr0",
+        mount_point="/mnt/cdrom", file_system_type="iso9660"}
+      values: 100 100 100 100 100 100 100 100 100 100
+    alert_rule_test:
+    - eval_time: 3m
+      alertname: GuestFilesystemAlmostOutOfSpace
+      exp_alerts: []
+
+  - interval: 1m
+    input_series:
+    - series: kubevirt_vmi_filesystem_capacity_bytes{name="win-vm", namespace="test-ns", disk_name="sda2",
+        mount_point="C:\\", file_system_type="NTFS"}
+      values: 100x10
+    - series: kubevirt_vmi_filesystem_used_bytes{name="win-vm", namespace="test-ns", disk_name="sda2", mount_point="C:\\",
+        file_system_type="NTFS"}
+      values: 100 100 100 100 100 100 100 100 100 100
+    alert_rule_test:
+    - eval_time: 3m
+      alertname: GuestFilesystemAlmostOutOfSpace
+      exp_alerts:
+      - exp_annotations:
+          summary: Guest filesystem is critically low on space
+          description: 'VirtualMachineInstance win-vm in namespace test-ns has filesystem sda2 (C:\) usage
+            above 95% (current: 100%).'
+          runbook_url: https://kubevirt.io/monitoring/runbooks/GuestFilesystemAlmostOutOfSpace
+        exp_labels:
+          severity: critical
+          operator_health_impact: none
+          kubernetes_operator_part_of: kubevirt
+          kubernetes_operator_component: kubevirt
+          name: win-vm
+          vm: win-vm
+          namespace: test-ns
+          disk_name: sda2
+          mount_point: C:\
+          file_system_type: NTFS
+
+  - interval: 1m
+    input_series:
+    - series: kubevirt_vmi_memory_available_bytes{name="virt-launcher-vm1", namespace="test-ns"}
+      values: 1000000000x10
+    - series: kubevirt_vmi_memory_usable_bytes{name="virt-launcher-vm1", namespace="test-ns"}
+      values: 40000000x10
+    - series: kubevirt_vmi_memory_swap_in_traffic_bytes{name="virt-launcher-vm1", namespace="test-ns"}
+      values: 0+100000000x10
+    - series: kubevirt_vmi_memory_swap_out_traffic_bytes{name="virt-launcher-vm1", namespace="test-ns"}
+      values: 0+100000000x10
+    - series: kubevirt_vmi_info{name="vm1", namespace="test-ns", phase="running", vmi_pod="virt-launcher-vm1"}
+      values: 1x10
+    alert_rule_test:
+    - eval_time: 2m
+      alertname: KubeVirtVMGuestMemoryPressure
+      exp_alerts: []
+    - eval_time: 5m
+      alertname: KubeVirtVMGuestMemoryPressure
+      exp_alerts: []
+    - eval_time: 7m
+      alertname: KubeVirtVMGuestMemoryPressure
+      exp_alerts:
+      - exp_annotations:
+          description: 'VirtualMachine vm1 in namespace test-ns is under memory pressure: low usable memory
+            with elevated major faults and/or swap IO.'
+          summary: The VirtualMachine is under memory pressure (possible thrashing)
+          runbook_url: https://kubevirt.io/monitoring/runbooks/KubeVirtVMGuestMemoryPressure
+        exp_labels:
+          severity: warning
+          operator_health_impact: none
+          kubernetes_operator_part_of: kubevirt
+          kubernetes_operator_component: kubevirt
+          name: virt-launcher-vm1
+          vm: vm1
+          namespace: test-ns
+
+  - interval: 1m
+    input_series:
+    - series: kubevirt_vmi_memory_available_bytes{name="virt-launcher-vm2", namespace="test-ns"}
+      values: 1000000000x40
+    - series: kubevirt_vmi_memory_usable_bytes{name="virt-launcher-vm2", namespace="test-ns"}
+      values: 20000000x40
+    - series: kubevirt_vmi_memory_swap_in_traffic_bytes{name="virt-launcher-vm2", namespace="test-ns"}
+      values: '0x40'
+    - series: kubevirt_vmi_memory_swap_out_traffic_bytes{name="virt-launcher-vm2", namespace="test-ns"}
+      values: '0x40'
+    - series: kubevirt_vmi_memory_pgmajfault_total{name="virt-launcher-vm2", namespace="test-ns"}
+      values: '0x40'
+    - series: kubevirt_vmi_info{name="vm2", namespace="test-ns", phase="running", vmi_pod="virt-launcher-vm2"}
+      values: 1x40
+    alert_rule_test:
+    - eval_time: 15m
+      alertname: KubeVirtVMGuestMemoryAvailableLow
+      exp_alerts: []
+    - eval_time: 29m
+      alertname: KubeVirtVMGuestMemoryAvailableLow
+      exp_alerts: []
+    - eval_time: 31m
+      alertname: KubeVirtVMGuestMemoryAvailableLow
+      exp_alerts:
+      - exp_annotations:
+          description: VirtualMachine vm2 in namespace test-ns has very low available memory (<3% headroom)
+            for 30 minutes with no meaningful swap IO (likely no swap).
+          summary: The VirtualMachine has low available memory without swap
+          runbook_url: https://kubevirt.io/monitoring/runbooks/KubeVirtVMGuestMemoryAvailableLow
+        exp_labels:
+          severity: info
+          operator_health_impact: none
+          kubernetes_operator_part_of: kubevirt
+          kubernetes_operator_component: kubevirt
+          name: virt-launcher-vm2
+          vm: vm2
+          namespace: test-ns
+
+  - interval: 1m
+    input_series:
+    - series: kubevirt_vmi_guest_os_panic_total{namespace="test", name="vm-01", type="unknown", bugcheck_code="unknown"}
+      values: _ _ 6 6 6 6 6
+    alert_rule_test:
+    - eval_time: 1m
+      alertname: VMNonRecoverableOSPanic
+      exp_alerts: []
+    - eval_time: 4m
+      alertname: VMNonRecoverableOSPanic
+      exp_alerts:
+      - exp_annotations:
+          summary: VM vm-01 in namespace test experienced a non-recoverable guest OS panic
+          description: The VM has experienced 6 non-recoverable guest OS panic(s) in the last 24 hours.
+          runbook_url: https://kubevirt.io/monitoring/runbooks/VMNonRecoverableOSPanic
+        exp_labels:
+          severity: critical
+          operator_health_impact: none
+          kubernetes_operator_part_of: kubevirt
+          kubernetes_operator_component: kubevirt
+          namespace: test
+          name: vm-01
+          vm: vm-01
+
+  # Adapted from kubevirt's fixture (interval 12h, values "6 6 6 13 13 13") for
+  # promtool 3.x left-open range selectors: the sample at exactly t-24h is
+  # excluded from increase(...[24h]), so dense 1h samples keep the 24h window
+  # fully covered and the alert still fires at 48h reporting 7 panics.
+  - interval: 1h
+    input_series:
+    - series: kubevirt_vmi_guest_os_panic_total{namespace="test", name="vm-02", type="unknown", bugcheck_code="unknown"}
+      values: 6x36 13x24
+    alert_rule_test:
+    - eval_time: 24h
+      alertname: VMNonRecoverableOSPanic
+      exp_alerts: []
+    - eval_time: 48h
+      alertname: VMNonRecoverableOSPanic
+      exp_alerts:
+      - exp_annotations:
+          summary: VM vm-02 in namespace test experienced a non-recoverable guest OS panic
+          description: The VM has experienced 7 non-recoverable guest OS panic(s) in the last 24 hours.
+          runbook_url: https://kubevirt.io/monitoring/runbooks/VMNonRecoverableOSPanic
+        exp_labels:
+          severity: critical
+          operator_health_impact: none
+          kubernetes_operator_part_of: kubevirt
+          kubernetes_operator_component: kubevirt
+          namespace: test
+          name: vm-02
+          vm: vm-02
